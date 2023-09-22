@@ -94,7 +94,8 @@ namespace UnityEngine.Rendering
         /// </summary>
         /// <param name="width">Initial reference rendering width.</param>
         /// <param name="height">Initial reference rendering height.</param>
-        public void Initialize(int width, int height)
+        /// <param name="useLegacyDynamicResControl">Use legacy hardware DynamicResolution control in RTHandle system.</param>
+        public void Initialize(int width, int height, bool useLegacyDynamicResControl = false)
         {
             if (m_AutoSizedRTs.Count != 0)
             {
@@ -109,7 +110,10 @@ namespace UnityEngine.Rendering
             m_MaxWidths = width;
             m_MaxHeights = height;
 
-            m_HardwareDynamicResRequested = DynamicResolutionHandler.instance.RequestsHardwareDynamicResolution();
+            if (useLegacyDynamicResControl)
+                m_HardwareDynamicResRequested = true;
+            else
+                m_HardwareDynamicResRequested = DynamicResolutionHandler.instance.RequestsHardwareDynamicResolution();
         }
 
         /// <summary>
@@ -520,6 +524,8 @@ namespace UnityEngine.Rendering
             if (isShadowMap || depthBufferBits != DepthBits.None)
             {
                 RenderTextureFormat format = isShadowMap ? RenderTextureFormat.Shadowmap : RenderTextureFormat.Depth;
+                GraphicsFormat stencilFormat = !isShadowMap && SystemInfo.IsFormatSupported(GraphicsFormat.R8_UInt, FormatUsage.StencilSampling) ? GraphicsFormat.R8_UInt : GraphicsFormat.None;
+
                 rt = new RenderTexture(width, height, (int)depthBufferBits, format, RenderTextureReadWrite.Linear)
                 {
                     hideFlags = HideFlags.HideAndDontSave,
@@ -534,6 +540,7 @@ namespace UnityEngine.Rendering
                     autoGenerateMips = autoGenerateMips,
                     anisoLevel = anisoLevel,
                     mipMapBias = mipMapBias,
+                    stencilFormat = stencilFormat,
                     antiAliasing = (int)msaaSamples,
                     bindTextureMS = bindTextureMS,
                     useDynamicScale = m_HardwareDynamicResRequested && useDynamicScale,
@@ -795,7 +802,7 @@ namespace UnityEngine.Rendering
             if (isShadowMap || depthBufferBits != DepthBits.None)
             {
                 RenderTextureFormat format = isShadowMap ? RenderTextureFormat.Shadowmap : RenderTextureFormat.Depth;
-                GraphicsFormat stencilFormat = isShadowMap ? GraphicsFormat.None : GraphicsFormat.R8_UInt;
+                GraphicsFormat stencilFormat = !isShadowMap && SystemInfo.IsFormatSupported(GraphicsFormat.R8_UInt, FormatUsage.StencilSampling) ? GraphicsFormat.R8_UInt : GraphicsFormat.None;
                 rt = new RenderTexture(width, height, (int)depthBufferBits, format, RenderTextureReadWrite.Linear)
                 {
                     hideFlags = HideFlags.HideAndDontSave,

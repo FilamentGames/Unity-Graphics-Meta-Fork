@@ -63,7 +63,6 @@ Pass
     $Universal.UseLegacySpriteBlocks:       #define UNIVERSAL_USELEGACYSPRITEBLOCKS
     $splice(PassInstancing)
     $splice(GraphDefines)
-    $splice(DotsInstancingVars)
 
     // Includes
     $splice(CustomInterpolatorPreInclude)

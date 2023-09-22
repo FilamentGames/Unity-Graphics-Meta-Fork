@@ -502,7 +502,9 @@ namespace UnityEngine.Rendering.HighDefinition
 
             // Aggregate the reflections parameters
             ScreenSpaceReflection reflSettings = hdCamera.volumeStack.GetComponent<ScreenSpaceReflection>();
-            parameters.reflections = reflSettings.enabled.value && ScreenSpaceReflection.RayTracingActive(reflSettings) && hdCamera.frameSettings.IsEnabled(FrameSettingsField.SSR);
+            bool opaqueReflections = hdCamera.frameSettings.IsEnabled(FrameSettingsField.SSR) && reflSettings.enabled.value;
+            bool transparentReflections  = hdCamera.frameSettings.IsEnabled(FrameSettingsField.TransparentSSR) && reflSettings.enabledTransparent.value;
+            parameters.reflections = ScreenSpaceReflection.RayTracingActive(reflSettings) && (opaqueReflections || transparentReflections);
             parameters.reflLayerMask = reflSettings.layerMask.value;
 
             // Aggregate the global illumination parameters
@@ -660,8 +662,6 @@ namespace UnityEngine.Rendering.HighDefinition
 
             using (var builder = renderGraph.AddRenderPass<RTASDebugPassData>("Debug view of the RTAS", out var passData, ProfilingSampler.Get(HDProfileId.RaytracingBuildAccelerationStructureDebug)))
             {
-                RTASDebugPassData debugPass = new RTASDebugPassData();
-
                 builder.EnableAsyncCompute(false);
 
                 // Camera data

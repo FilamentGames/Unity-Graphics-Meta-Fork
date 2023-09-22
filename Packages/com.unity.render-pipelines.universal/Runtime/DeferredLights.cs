@@ -762,10 +762,15 @@ namespace UnityEngine.Rendering.Universal.Internal
 
         void SetAdditionalLightsShadowsKeyword(ref CommandBuffer cmd, ref RenderingData renderingData, bool hasDeferredShadows)
         {
-            // The OFF variant is stripped out based on the stripShadowsOffVariants parameter in the renderer.
-            // This is done to improve build times. Instead a very small texture is sampled.
+            bool additionalLightShadowsEnabledInAsset = renderingData.shadowData.additionalLightShadowsEnabled;
             bool hasOffVariant = !renderingData.cameraData.renderer.stripShadowsOffVariants;
-            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.AdditionalLightShadows, !hasOffVariant || hasDeferredShadows);
+
+            // AdditionalLightShadows Keyword is enabled when:
+            // Shadows are enabled in Asset and
+            // a) the OFF variant has been stripped
+            // b) light is casting a shadow
+            bool shouldEnable = additionalLightShadowsEnabledInAsset && (!hasOffVariant || hasDeferredShadows);
+            CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.AdditionalLightShadows, shouldEnable);
         }
 
         void RenderStencilDirectionalLights(CommandBuffer cmd, ref RenderingData renderingData, NativeArray<VisibleLight> visibleLights, int mainLightIndex)
@@ -800,7 +805,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 var additionalLightData = light.GetUniversalAdditionalLightData();
                 uint lightLayerMask = RenderingLayerUtils.ToValidRenderingLayers(additionalLightData.renderingLayers);
 
-                // Setup shadow paramters:
+                // Setup shadow parameters:
                 // - for the main light, they have already been setup globally, so nothing to do.
                 // - for other directional lights, it is actually not supported by URP, but the code would look like this.
                 bool hasDeferredShadows;

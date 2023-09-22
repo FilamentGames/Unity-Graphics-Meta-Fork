@@ -2,22 +2,22 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using NUnit.Framework;
-using UnityEngine;
-using UnityEditor.VFX.Block.Test;
-using UnityEngine.VFX;
-using UnityEditor.VFX;
-
-
-using Object = UnityEngine.Object;
 using System.IO;
-using UnityEngine.TestTools;
 using System.Collections;
+using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
-using UnityEditor.VersionControl;
+
+using UnityEditor.ShaderGraph.Internal;
+using NUnit.Framework;
+
+using UnityEditor.VFX.Block.Test;
 using UnityEditor.VFX.UI;
+
+using UnityEngine;
+using UnityEngine.VFX;
+using UnityEngine.TestTools;
+
 using Task = System.Threading.Tasks.Task;
 
 namespace UnityEditor.VFX.Test
@@ -1149,6 +1149,12 @@ namespace UnityEditor.VFX.Test
             m_Modify_SG_Property_SG_B = File.ReadAllText(s_Modify_SG_Property_SG_B);
         }
 
+        [OneTimeTearDown]
+        public void CleanUp()
+        {
+            VFXTestCommon.DeleteAllTemporaryGraph();
+        }
+
         //Cover regression 1361601
         [UnityTest]
         public IEnumerator Modify_ShaderGraph_Property_Check_VFX_Compilation_Doesnt_Fail()
@@ -1224,6 +1230,64 @@ namespace UnityEditor.VFX.Test
                 yield return null;
         }
 
+        static List<string> ExtractPropertyList(VFXMaterialSerializedSettings settings)
+        {
+            var field = typeof(VFXMaterialSerializedSettings).GetField("m_PropertyMap", BindingFlags.Instance | BindingFlags.NonPublic);
+            var entry = field.GetValue(settings) as Dictionary<string, float>;
+            return entry.Keys.ToList();
+        }
+
+        [UnityTest, Description("UUM-41220")]
+        public IEnumerator Switch_ShaderGraph_From_Old_To_New_Check_MaterialSettings()
+        {
+            var tempDest = VFXTestCommon.tempBasePath + "/Repro_UUM_41220/";
+            Directory.CreateDirectory(tempDest);
+
+
+            var baseVFXPath = "Assets/AllTests/Editor/Tests/VFXShaderGraphMaterialSettings.vfx";
+            var sgOldPath = "Assets/AllTests/Editor/Tests/VFXShaderGraphMaterialSettings_OldSG.shadergraph";
+            var sgNewPath = "Assets/AllTests/Editor/Tests/VFXShaderGraphMaterialSettings_NewSG.shadergraph";
+
+            var originalVfxContent = File.ReadAllBytes(baseVFXPath);
+            var sgOldContent = File.ReadAllBytes(sgOldPath);
+            var sgNewContent = File.ReadAllBytes(sgNewPath);
+
+            Assert.IsNotEmpty(originalVfxContent);
+            Assert.IsNotEmpty(sgOldContent);
+            Assert.IsNotEmpty(sgNewContent);
+
+            var vfxPath = tempDest + "Repro_" + System.Guid.NewGuid() + ".vfx";
+            var sgPath = tempDest + "Repro_" + System.Guid.NewGuid() + ".shaderGraph";
+            File.WriteAllBytes(vfxPath, originalVfxContent);
+            File.WriteAllBytes(sgPath, sgOldContent);
+            AssetDatabase.Refresh();
+            yield return null;
+
+            var vfx = AssetDatabase.LoadAssetAtPath<VisualEffectAsset>(vfxPath);
+            var sg = AssetDatabase.LoadAssetAtPath<ShaderGraphVfxAsset>(sgPath);
+
+            Assert.IsNotNull(vfx);
+            Assert.IsNotNull(sg);
+
+            var vfxResource = (VisualEffectResource)vfx.GetOrCreateResource();
+            var vfxGraph = vfxResource.GetOrCreateGraph();
+            var output = vfxGraph.children.OfType<VFXShaderGraphParticleOutput>().Single();
+            output.SetSettingValue("shaderGraph", sg);
+            AssetDatabase.ImportAsset(vfxPath);
+            yield return null;
+
+            var materialSettings = output.GetSetting("materialSettings");
+            var properties = ExtractPropertyList((VFXMaterialSerializedSettings)materialSettings.value);
+            Assert.IsEmpty(properties);
+
+            File.WriteAllBytes(sgPath, sgNewContent);
+            AssetDatabase.Refresh();
+            yield return null;
+
+            materialSettings = output.GetSetting("materialSettings");
+            properties = ExtractPropertyList((VFXMaterialSerializedSettings)materialSettings.value);
+            Assert.IsNotEmpty(properties);
+        }
     }
 
 
@@ -1305,6 +1369,38 @@ namespace UnityEditor.VFX.Test
             Assert.IsTrue(customLogger.m_HasLoggedMustUnlit);
             Assert.IsTrue(customLogger.m_HasLoggedFail);
         }
+
+        [UnityTest, Description("Cover regression UUM-563")]
+        public IEnumerator ShaderGraph_Not_Reverted_On_Save()
+        {
+            // Create empty graph
+            var graph = VFXTestCommon.MakeTemporaryGraph();
+            var window = VFXViewWindow.GetWindow(graph.GetResource(), true);
+            var viewController = VFXViewController.GetController(graph.GetResource(), true);
+            window.graphView.controller = viewController;
+            yield return null;
+
+            // Add a static mesh output
+            var staticMeshOutputContextDesc = VFXLibrary.GetContexts().Single(x => x.model is VFXStaticMeshOutput);
+            var staticMeshOutputContext = (VFXStaticMeshOutput)window.graphView.controller.AddVFXContext(Vector2.zero, staticMeshOutputContextDesc);
+            var shaderGraph = AssetDatabase.LoadAssetAtPath<Shader>("Assets/AllTests/Editor/Tests/Modify_SG_Property_A.shadergraph");
+            staticMeshOutputContext.SetSettingValue("shader", shaderGraph);
+            window.graphView.OnSave();
+            yield return null;
+
+            // Check that the shader is correctly assigned
+            var s = staticMeshOutputContext.GetSetting("shader").value;
+            Assert.NotNull(staticMeshOutputContext.GetSetting("shader").value);
+
+            // Change shader to None
+            staticMeshOutputContext.SetSettingValue("shader", null);
+            window.graphView.OnSave();
+            yield return null;
+
+            // Check that the shader is still set to None
+            Assert.IsNull(staticMeshOutputContext.GetSetting("shader").value, "The shader was expected to be null but it didn't. Probably the previous value has been restored when saving");
+        }
+
 
         [OneTimeTearDown]
         public void CleanUp()
